@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DesignSurface">
+    <option name="filePathToZoomLevelMap">
+      <map>
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/drawable/bg_call.xml" value="0.168" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/drawable/circle.xml" value="0.1715" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/drawable/gray_bg.xml" value="0.168" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/drawable/ic_launcher_background.xml" value="0.133" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/drawable/layer_list.xml" value="0.1715" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/drawable/main_bottom.xml" value="0.2" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/drawable/user_bg.xml" value="0.168" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/drawable/white_rounded_bg.xml" value="0.168" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/layout/activity_call.xml" value="0.26875" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/layout/activity_finding.xml" value="0.18" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/layout/activity_main.xml" value="0.25" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/layout/activity_splash.xml" value="0.26875" />
+        <entry key="..\:/AndroidStudioProjects/RandomCall2/app/src/main/res/layout/bg_call.xml" value="0.26458333333333334" />
+      </map>
+    </option>
+  </component>
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_11" default="true" project-jdk-name="Android Studio default JDK" project-jdk-type="JavaSDK">
+    <output url="file://$PROJECT_DIR$/build/classes" />
+  </component>
+  <component name="ProjectType">
+    <option name="id" value="Android" />
+  </component>
+</project>
