@@ -1,45 +1,27 @@
 {
   "project_info": {
-    "project_number": "945209407217",
-    "firebase_url": "https://enpraxrandom-default-rtdb.asia-southeast1.firebasedatabase.app",
-    "project_id": "enpraxrandom",
-    "storage_bucket": "enpraxrandom.appspot.com"
+    "project_number": "674265876887",
+    "firebase_url": "https://calling-random-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "calling-random",
+    "storage_bucket": "calling-random.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:945209407217:android:0963fa8000344e625a9b50",
+        "mobilesdk_app_id": "1:674265876887:android:aa4a199b3e43aa489e1cd2",
         "android_client_info": {
-          "package_name": "com.akapps.randomcaller"
+          "package_name": "com.helloenglish.randomcaller"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "945209407217-q4iko8a5211a1hm8qf5bbkvi1111l1d8.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.akapps.randomcaller",
-            "certificate_hash": "741b825132fff9de56451c2f7b3b58044841c26f"
-          }
-        },
-        {
-          "client_id": "945209407217-mtasepudli6p5rml9c1q1nms0dj8d6sl.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBL4bEI18M7nrCxfa39LKUomlD5tOUD71Y"
+          "current_key": "AIzaSyATAV0KVlfLWEROJbHl9kC4ekXU8372VqM"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "945209407217-mtasepudli6p5rml9c1q1nms0dj8d6sl.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }
