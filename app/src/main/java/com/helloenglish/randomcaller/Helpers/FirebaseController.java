@@ -3,8 +3,10 @@ package com.helloenglish.randomcaller.Helpers;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -28,12 +30,12 @@ public class FirebaseController {
     private Gson gson;
     private String myUid;
     private String remoteUserId;
-    private ValueEventListener iceDataListener;
+    private ChildEventListener iceDataChildListener;
     private ValueEventListener offerDataListener;
 
-    public FirebaseController(FirebaseDatabase firebaseDatabase, String remoteUserId) {
+    public FirebaseController(FirebaseDatabase firebaseDatabase, String remoteUserId, String callId) {
         this.offerDbRef = firebaseDatabase.getReference("signaling").child("offer");
-        this.iceDbRef = firebaseDatabase.getReference("signaling").child("ice");
+        this.iceDbRef = firebaseDatabase.getReference("signaling").child(callId).child("ice");
         this.myUid = FirebaseAuth.getInstance().getUid();
         this.remoteUserId = remoteUserId;
         gson = new Gson();
@@ -42,7 +44,9 @@ public class FirebaseController {
     public void sendIceCandidate(IceCandidate iceCandidate, String to, String callId, SuccessListener listener){
         //Send the ice candidate to other peer
         SingalingModel model = new SingalingModel(to, SignalType.ICE.name(), gson.toJson(iceCandidate), callId);
+        String randomKey = iceDbRef.child(myUid).push().getKey();
         iceDbRef.child(myUid)
+                .child(randomKey)
                 .setValue(model)
                 .addOnCompleteListener(task -> {
                     if(task.isSuccessful()){
@@ -113,8 +117,8 @@ public class FirebaseController {
         }
 
         if(iceDbRef!=null){
-            if(iceDataListener!=null) {
-                iceDbRef.child(remoteUserId).removeEventListener(iceDataListener);
+            if(iceDataChildListener!=null) {
+                iceDbRef.child(remoteUserId).removeEventListener(iceDataChildListener);
             }
             iceDbRef.child(myUid)
                     .removeValue();
@@ -122,18 +126,28 @@ public class FirebaseController {
     }
 
     public void listenForIceData(IceDataObserver iceDataObserver){
-        iceDataListener = new ValueEventListener() {
+        iceDataChildListener = new ChildEventListener() {
+
             @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
+            public void onChildAdded(@NonNull DataSnapshot snapshot, @Nullable String previousChildName) {
                 SingalingModel model = snapshot.getValue(SingalingModel.class);
                 if(model!=null && model.getDataType().equals(SignalType.ICE.name())){
                     // If the data is a ICE candidate, we set it to our WebRTC Client
-                   iceDataObserver.onIceReceived(model);
+                    iceDataObserver.onIceReceived(model);
                 } else {
                     Log.e(TAG, "iceDataListener Model is null or data is not ICE");
-                    Log.e("SIGNALDATA", gson.toJson(model));
+                    Log.e("SIGNAL_DATA", gson.toJson(model));
                 }
             }
+
+            @Override
+            public void onChildChanged(@NonNull DataSnapshot snapshot, @Nullable String previousChildName) {}
+
+            @Override
+            public void onChildRemoved(@NonNull DataSnapshot snapshot) {}
+
+            @Override
+            public void onChildMoved(@NonNull DataSnapshot snapshot, @Nullable String previousChildName) {}
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e(TAG, "onCancelled listenForIceData" + error.getMessage());
@@ -145,7 +159,7 @@ public class FirebaseController {
         // This way we use Firebase similar like WebSOCKET
 
         iceDbRef.child(remoteUserId)
-                .addValueEventListener(iceDataListener);
+                .addChildEventListener(iceDataChildListener);
     }
 
     public void stopOfferListening() {

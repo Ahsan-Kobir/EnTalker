@@ -1,16 +1,9 @@
 package com.helloenglish.randomcaller.Helpers;
 
 import android.app.Activity;
-import android.content.Intent;
 import android.util.Log;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-
-import com.helloenglish.randomcaller.Models.CallReqModel;
-import com.helloenglish.randomcaller.Models.Constants;
-import com.helloenglish.randomcaller.Activity.CallActivity;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -19,64 +12,100 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.MutableData;
 import com.google.firebase.database.Transaction;
 import com.google.firebase.database.ValueEventListener;
-import com.google.gson.Gson;
+import com.helloenglish.randomcaller.Interfaces.CallerFindListener;
+import com.helloenglish.randomcaller.Models.CallReqModel;
+import com.helloenglish.randomcaller.Models.Constants;
 
 import java.util.UUID;
 
 import javax.inject.Singleton;
 
-@Singleton
 public class FindCallerHelper {
     private Activity activity;
     private DatabaseReference dbRef;
     private ValueEventListener callReceiveListener;
     private String lastCallerId;
-    private String myUid;
+    private final String myUid;
+    private boolean shouldWait = false;
+    private CallReqModel currentCall;
 
-    public FindCallerHelper(Activity activity, String callType) {
+    private CallerFindListener callerFindListener;
+
+    public FindCallerHelper(Activity activity, String callType, CallerFindListener callerFindListener) {
         this.activity = activity;
+        this.callerFindListener = callerFindListener;
         dbRef = FirebaseDatabase.getInstance().getReference("callRequests").child(callType);
         myUid = FirebaseAuth.getInstance().getUid();
     }
 
     public void findRandomCaller() {
-
         //Check if there is any user trying to call or not
         dbRef.runTransaction(new Transaction.Handler() {
-            @NonNull
             @Override
-            public Transaction.Result doTransaction(@NonNull MutableData currentData) {
-                return Transaction.success(currentData);
-            }
-
-            @Override
-            public void onComplete(@Nullable DatabaseError error, boolean committed, @Nullable DataSnapshot currentData) {
+            public Transaction.Result doTransaction(MutableData currentData) {
                 CallReqModel callReqModel = null;
+                currentCall = null;
                 if (currentData.getChildrenCount() > 0) {
                     //Converting previous call request to CallReqModel Class
-                    for (DataSnapshot snapshot : currentData.getChildren()) {
+                    for (MutableData snapshot : currentData.getChildren()) {
                         if (snapshot.child("status").getValue(String.class).equals(Constants.WAITING)) {
+                            // We got a callRequest who is waiting
                             callReqModel = snapshot.getValue(CallReqModel.class);
                             break;
                         }
                     }
                 }
-                //If it's null, then no caller is active
+                //If it's null, then no caller is waiting
                 if (callReqModel == null) {
                     Log.d("FindRandomCaller", "callReqModel is null, starting new call");
-                    startNewCall();
+                    currentData.child(myUid)
+                            .setValue(new CallReqModel(myUid, lastCallerId, Constants.WAITING, getRandomId()));
+                    shouldWait = true;
                 } else { //Already has a caller, let's connect to him
                     if (callReqModel.getCallerId().equals(myUid)) { // Check if the call request is from my side or not
-                        startNewCall();
+                        currentData.child(myUid)
+                                .setValue(new CallReqModel(myUid, lastCallerId, Constants.WAITING, getRandomId()));
+                        shouldWait = true;
                     } else {
-                        connectCall(callReqModel);
+                        connectCall(currentData, callReqModel);
+                        currentCall = callReqModel;
+                        shouldWait = false;
                     }
+                }
+                return Transaction.success(currentData);
+            }
+
+            @Override
+            public void onComplete(DatabaseError error, boolean committed, DataSnapshot currentData) {
+                if(committed){
+                    if (shouldWait){
+                        listenForChanges();
+                    } else {
+                        startCallActivity(currentCall.getCallerId(), currentCall.getCallId(), false);
+                    }
+                } else {
+                    Log.e("FindCallHelper", error.getDetails());
+                    Toast.makeText(activity, error.getMessage(), Toast.LENGTH_SHORT).show();
+                    cancelAndClose();
                 }
             }
         });
     }
 
-    ;
+    private void connectCall(MutableData mutableData, CallReqModel callReqModel) {
+        if (lastCallerId == null) {
+            mutableData.child(callReqModel.getCallerId())
+                    .child("receiverId")
+                    .setValue(myUid);
+            mutableData.child(callReqModel.getCallerId())
+                    .child("status")
+                    .setValue(Constants.IN_CALL);
+        } else {
+            mutableData.child(callReqModel.getCallerId())
+                    .child("status")
+                    .setValue(Constants.RECONNECT_LAST_USER);
+        }
+    }
 
     public void cancelFinding() {
         //We delete our call request from the database
@@ -95,55 +124,45 @@ public class FindCallerHelper {
 
     private void checkForRemoteReconnect() {
         // Let's check if the remote user is already placed a request for reconnect
-        dbRef.child(lastCallerId).runTransaction(new Transaction.Handler() {
-            @NonNull
+        dbRef.runTransaction(new Transaction.Handler() {
             @Override
-            public Transaction.Result doTransaction(@NonNull MutableData currentData) {
-                return Transaction.success(currentData);
-            }
-
-            @Override
-            public void onComplete(@Nullable DatabaseError error, boolean committed, @Nullable DataSnapshot currentData) {
+            public Transaction.Result doTransaction(MutableData currentData) {
                 CallReqModel callReqModel = null;
-                if (currentData.getValue()!=null) {
-                    // Converting previous call request to CallReqModel class after
+                currentCall = null;
+                if (currentData.child(lastCallerId).getValue()!=null) {
+                    // Converting previous call request to CallReqModel class and
                     // checking if he is looking for me or not
-                    if (currentData.child("receiverId").getValue(String.class).equals(myUid)) {
-                        callReqModel = currentData.getValue(CallReqModel.class);
+                    if (currentData.child(lastCallerId).child("receiverId").getValue(String.class).equals(myUid)) {
+                        callReqModel = currentData.child(lastCallerId).getValue(CallReqModel.class);
                     }
                 }
-                //If it's null, then he other peer didn't make a request, so we create and wait for him
+                //If it's null, then other peer didn't make a request, so we create and wait for him
                 if (callReqModel == null) { //Let's start a new call request
-                    Log.d("FindRandomCaller", "callReqModel is null, starting new call");
-                    startNewCall();
+                    currentData.child(myUid)
+                            .setValue(new CallReqModel(myUid, lastCallerId, Constants.WAITING, getRandomId()));
+                    shouldWait = true;
                 } else { //Already has a caller, let's connect to him
-                    connectCall(callReqModel);
+                    connectCall(currentData, callReqModel);
+                    currentCall = callReqModel;
+                    shouldWait = false;
                 }
-            }
-        });
-    }
-
-    public void startNewCall() {
-        dbRef.runTransaction(new Transaction.Handler() {
-            @NonNull
-            @Override
-            public Transaction.Result doTransaction(@NonNull MutableData currentData) {
-                // Setting our ID as a new callRequest child
-                // If we are reconnecting, then last caller id will not be null
-                // Otherwise it will be null
-                currentData.child(myUid)
-                        .setValue(new CallReqModel(myUid, lastCallerId, Constants.WAITING, getRandomId()));
                 return Transaction.success(currentData);
             }
 
             @Override
-            public void onComplete(@Nullable DatabaseError error, boolean committed, @Nullable DataSnapshot currentData) {
-                if (committed) {
-                    Log.d("FindRandom", "New call request sent and waiting");
-                    listenForChanges(); // Waiting for other user to connect
+            public void onComplete(DatabaseError error, boolean committed, DataSnapshot currentData) {
+                if(committed){
+                    if (shouldWait){
+                        listenForChanges();
+                    } else {
+                        startCallActivity(currentCall.getCallerId(), currentCall.getCallId(), false);
+                    }
                 } else {
+                    Log.e("FindCallHelper", error.getDetails());
+                    Toast.makeText(activity, error.getMessage(), Toast.LENGTH_SHORT).show();
                     cancelAndClose();
                 }
+
             }
         });
     }
@@ -155,7 +174,7 @@ public class FindCallerHelper {
     private void listenForChanges() {
         callReceiveListener = new ValueEventListener() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
+            public void onDataChange(DataSnapshot snapshot) {
                 if(snapshot.getValue()!=null){
                     if (lastCallerId == null) { // if lastCallerId == null, then we know that user is not trying to reconnect
                         if (snapshot.child("receiverId").getValue(String.class) != null) { //If we get a receiver, then we forward to next activity to start a call
@@ -163,7 +182,6 @@ public class FindCallerHelper {
                                     snapshot.child("callId").getValue(String.class),
                                     true);
                             dbRef.child(myUid).removeEventListener(this);
-                            activity.finish();
                         }
                     } else {
                         if (snapshot.child("status").getValue(String.class).equals(Constants.RECONNECT_LAST_USER)) { //If we get a receiver, then we forward to next activity to start a call
@@ -171,64 +189,26 @@ public class FindCallerHelper {
                                     snapshot.child("callId").getValue(String.class),
                                     true);
                             dbRef.child(myUid).removeEventListener(this);
-                            activity.finish();
                         }
                     }
                 }
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-
+            public void onCancelled(DatabaseError error) {
+                Log.e("FindCallerHelper", error.getDetails());
             }
         };
         dbRef.child(myUid)
                 .addValueEventListener(callReceiveListener);
     }
 
-    public void connectCall(CallReqModel callReqModel) {
-        if (callReqModel != null) {
-            Log.d("CallReqModel", new Gson().toJson(callReqModel));
-            if (lastCallerId == null) {
-                dbRef.child(callReqModel.getCallerId())
-                        .child("receiverId")
-                        .setValue(myUid)
-                        .addOnCompleteListener(task -> {
-                            if (task.isSuccessful()) {
-                                startCallActivity(callReqModel.getCallerId(), callReqModel.getCallId(), false);
-                                activity.finish();
-                            } else {
-                                Toast.makeText(activity, task.getException().getLocalizedMessage(), Toast.LENGTH_SHORT).show();
-                                cancelAndClose();
-                            }
-                        });
-            } else {
-                dbRef.child(callReqModel.getCallerId())
-                        .child("status")
-                        .setValue(Constants.RECONNECT_LAST_USER)
-                        .addOnCompleteListener(task -> {
-                            if (task.isSuccessful()) {
-                                startCallActivity(callReqModel.getCallerId(), callReqModel.getCallId(), false);
-                                activity.finish();
-                            } else {
-                                Toast.makeText(activity, task.getException().getLocalizedMessage(), Toast.LENGTH_SHORT).show();
-                                cancelAndClose();
-                            }
-                        });
-            }
-        }
-    }
 
     private void startCallActivity(String receiverId, String callId, boolean shouldCreateOffer) {
-        // Let's save the remote user id for later
         SpHelper.getPrefs(activity).setLastCaller(receiverId);
-
-        // Starting the call activity with remote user's id
-        Intent in = new Intent(activity, CallActivity.class);
-        in.putExtra(Constants.REMOTE_CALLER_ID, receiverId);
-        in.putExtra(Constants.SHOULD_CREATE_OFFER, shouldCreateOffer);
-        in.putExtra(Constants.CALL_ID, callId);
-        activity.startActivity(in);
+        callerFindListener.onFound(receiverId, callId, shouldCreateOffer);
+        lastCallerId = null;
+        cancelFinding();
     }
 
     private void cancelAndClose() {

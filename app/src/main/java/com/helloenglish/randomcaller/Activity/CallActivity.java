@@ -2,16 +2,20 @@ package com.helloenglish.randomcaller.Activity;
 
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.widget.ConstraintLayout;
 
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.gson.Gson;
+import com.helloenglish.randomcaller.Helpers.FindCallerHelper;
 import com.helloenglish.randomcaller.Helpers.FirebaseController;
+import com.helloenglish.randomcaller.Interfaces.CallerFindListener;
 import com.helloenglish.randomcaller.Interfaces.IceDataObserver;
 import com.helloenglish.randomcaller.Interfaces.SuccessListener;
 import com.helloenglish.randomcaller.Models.Constants;
@@ -45,17 +49,55 @@ public class CallActivity extends AppCompatActivity {
 
     private WebRtcClient webRtcClient;
     private RTCAudioManager rtcAudioManager;
-    private String remoteUserId;
-    private String callId;
+    private String remoteUserId, myUid;
+    String callId;
     private FirebaseController firebaseController;
+
+    private FindCallerHelper findCallerHelper;
+    private ConstraintLayout callViews, searchingViews;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_call);
 
-        Log.d(TAG, "STARTING NEW CALL");
+        initViewById();
 
+        String callType = getIntent().getStringExtra("callType");
+
+        startFindingPartner(callType);
+
+//        // Check if the activity received a valid call id
+//        if (callId.isEmpty()) {
+//            Log.e(TAG, "empty call id or receiver id");
+//            finishAffinity();
+//            return;
+//        }
+
+    }
+
+    private void connectCall(boolean shouldOffer){
+        Log.d(TAG, "NEW CALL ID: " + callId);
+
+        searchingViews.setVisibility(View.GONE);
+        callViews.setVisibility(View.VISIBLE);
+
+        initialize();
+
+        firebaseController = new FirebaseController(FirebaseDatabase.getInstance(), remoteUserId, callId);
+
+        // One peer needs to create offer and other needs to accept that
+        // So we call createOffer() method with the shouldOffer boolean
+        // that we received from StartCallActivity/FindCallHelper
+        initOffer(shouldOffer);
+
+        setUiHandlers();
+
+        // Setting default speaker mode to loudSpeaker mode initially
+        loudSpeaker = true;
+        rtcAudioManager.setDefaultAudioDevice(RTCAudioManager.AudioDevice.SPEAKER_PHONE);
+    }
+    private void initViewById(){
         endButton = findViewById(R.id.endButton);
         muteButton = findViewById(R.id.muteButton);
         speakerButton = findViewById(R.id.speakerButton);
@@ -64,33 +106,30 @@ public class CallActivity extends AppCompatActivity {
 
         idText.setText(FirebaseAuth.getInstance().getUid());
 
-        remoteUserId = getIntent().getStringExtra(Constants.REMOTE_CALLER_ID);
-        callId = getIntent().getStringExtra(Constants.CALL_ID);
+//        remoteUserId = getIntent().getStringExtra(Constants.REMOTE_CALLER_ID);
+//        callId = getIntent().getStringExtra(Constants.CALL_ID);
+        myUid = FirebaseAuth.getInstance().getUid();
 
-        // Check if the activity received a valid call id
-        if (callId.isEmpty()) {
-            Log.e(TAG, "empty call id or receiver id");
-            finishAffinity();
-            return;
+        callViews = findViewById(R.id.callViews);
+        searchingViews = findViewById(R.id.searchingViews);
+
+    }
+    private void startFindingPartner(String callType) {
+        findCallerHelper = new FindCallerHelper(this, callType, new CallerFindListener() {
+            @Override
+            public void onFound(String receiverId, String currentCallId, boolean shouldCreateOffer) {
+                remoteUserId = receiverId;
+                callId = currentCallId;
+                connectCall(shouldCreateOffer);
+            }
+        });
+        if(callType.equals(Constants.RECONNECT_LAST_USER)){
+            findCallerHelper.reConnectLastCaller();
+        } else {
+            findCallerHelper.findRandomCaller();
         }
-        Log.d(TAG, "NEW CALL ID: " + callId);
-
-        initialize();
-
-        firebaseController = new FirebaseController(FirebaseDatabase.getInstance(), remoteUserId);
-
-        // One peer needs to create offer and other needs to accept that
-        // So we call createOffer() method with the shouldOffer boolean
-        // that we received from StartCallActivity/FindCallHelper
-
-        boolean shouldOffer = getIntent().getBooleanExtra(Constants.SHOULD_CREATE_OFFER, true);
-        initOffer(shouldOffer);
-
-        setUiHandlers();
-
-        // Setting default speaker mode to loudSpeaker mode initially
-        loudSpeaker = true;
-        rtcAudioManager.setDefaultAudioDevice(RTCAudioManager.AudioDevice.SPEAKER_PHONE);
+        searchingViews.setVisibility(View.VISIBLE);
+        callViews.setVisibility(View.GONE);
     }
 
     private void initOffer(boolean shouldOffer){
@@ -130,9 +169,14 @@ public class CallActivity extends AppCompatActivity {
     }
 
     private void startExchangeIce(){
-        firebaseController.listenForIceData(singalingModel -> {
-            IceCandidate iceCandidate = new Gson().fromJson(singalingModel.getData(), IceCandidate.class);
-            webRtcClient.addIceCandidate(iceCandidate);
+        firebaseController.listenForIceData(signalingModel -> {
+            if(signalingModel.getCallId().equals(callId) && signalingModel.getTo().equals(myUid)){
+                IceCandidate iceCandidate = new Gson().fromJson(signalingModel.getData(), IceCandidate.class);
+                webRtcClient.addIceCandidate(iceCandidate);
+            } else {
+                Log.e(TAG, "ICE Found but FOR OTHER CALL or USER");
+            }
+
         });
     }
 
@@ -289,7 +333,9 @@ public class CallActivity extends AppCompatActivity {
 
     private void leaveAndDestroy() {
         // STop everything and exit from the activity
-        firebaseController.stopSignaling();
+        if(firebaseController!=null){
+            firebaseController.stopSignaling();
+        }
         rtcAudioManager.stop();
         rtcAudioManager.destroyWakelock();
         try {
